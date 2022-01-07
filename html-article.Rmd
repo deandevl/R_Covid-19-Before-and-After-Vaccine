@@ -1,0 +1,124 @@
+---
+title: "Covid-19 Deaths Before and After Vaccine"
+output: 
+   html_document:
+    toc: yes
+    toc_depth: 3
+    css: style-article.css
+params:
+  date: !r Sys.Date()    
+---
+
+```{r,setup, include=FALSE, eval=TRUE}
+options(knitr.table.format = "html", width = 140)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.width = 12, fig.height = 8)
+```
+
+<div>Author: Rick Dean</div>
+<div>Article date: `r params$date`</div>
+
+<div class="abstract">
+  <p class="abstract">Abstract</p>
+  A plot is created that shows the percentage of Covid-19 deaths as a share of all deaths across 5 race groups both before and after eligibility for the vaccine. Universal vaccine eligibility was April 19, 2021, the date when all adults in the United States were eligible for vaccination.  This article was inspired by similar plots in the [New York Times](https://www.nytimes.com/interactive/2021/12/28/us/covid-deaths.html) and an R-Bloggers article [Starting 2022 Off With A Fairly Complex {ggplot2} Recreation Plot](https://www.r-bloggers.com/2022/01/starting-2022-off-with-a-fairly-complex-ggplot2-recreation-plot/?utm_source=phpList&utm_medium=email&utm_campaign=R-bloggers-daily&utm_content=HTML). The main purpose of this article is to show the capabilities of the [RplotterPkg](https://github.com/deandevl/RplotterPkg) in creating the plot.
+</div>  
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+library(knitr)
+library(kableExtra)
+library(data.table)
+library(RplotterPkg)
+library(ggrepel)
+library(grid)
+library(gtable)
+library(here)
+```
+
+## Read the data
+
+<div class="note">Note: Table shows a portion (8 rows) of the data.</div>
+
+```{r}
+current_dir = here()
+data_file_path = file.path(current_dir, "data", "data.csv")
+data_df = data.table::fread(data_file_path)
+RplotterPkg::create_table(
+  x = head(data_df,8),
+  caption = "Percentage of Deaths",
+  font_size = 14,
+  align_v = c("l","c","c","c"),
+)
+```
+
+## Create a data.table
+
+1. "Melt" the `before` and `after` columns into one column:
+
+```{r}
+data_long_df = data.table::melt(data_df, measure.vars = c("before","after"), variable.name = "eligibility", value.name = "percent of deaths")
+```
+
+2. Define `age_group` column as a factor with a specific order.  Also append the numeric `elig` column reflecting values `before` and `after` values as 0 or 1 respectively:
+
+```{r}
+data_long_df[, `:=`(age_group = factor(age_group, levels = c("under_25","25-44","45-64","65-84","85+")), elig = ifelse(eligibility == "before", 0,1))]
+```
+
+## Create a list of `RplotterPkg::multi_scatter_plot()` objects for each race
+
+<div class="note">Note: Each of the 4 race `multi_scatter_plot()`'s contains 5 line graphs for each age group of the race.</div>
+
+```{r}
+races <-  c("white", "hispanic", "black", "asian")
+plots_lst <-  vector(mode = "list", length = length(races))
+for(i in seq_along(races)){
+  data_race_df <-  data_long_df[race == races[[i]]]
+
+  plots_lst[[i]] <- RplotterPkg::multi_scatter_plot(
+    df = data_race_df,
+    title = races[[i]],
+    factor_var = "age_group",
+    factor_x = "elig",
+    x_major_breaks = c(0,1),
+    x_labels = c("before", "after"),
+    aes_y = "percent of deaths",
+    columns = 5,
+    col_width = 2,
+    row_height = 3,
+    connect = TRUE,
+    line_color = "blue",
+    y_limits = c(0, 40),
+    y_major_breaks =  seq(from = 0, to = 40, by = 10),
+    rot_y_tic_label = TRUE,
+    aes_label = "percent of deaths",
+    aes_label_nudge_x = 0.1,
+    aes_label_nudge_y = 2.0,
+    display_plot = FALSE
+  )
+}
+```
+
+## Consolidate the 4 race `RplotterPkg::multi_scatter_plot()` objects into one plot
+
+<div class="note">Note: Using `RplotterPkg::multi_panel_grid()` to layout the 4 race plots into one plot.</div>
+
+1. Define a layout by specifying 4 race plots, 1 column and 4 rows:
+
+```{r}
+layout_lst  <-  list(
+  "plots" = plots_lst,
+  "rows" =  c(1, 2, 3, 4),
+  "cols" =  c(1, 1, 1, 1)
+)
+```
+
+2. Create a consolidated plot 12 inches wide with each race row taking up 3.5 inches along with a title:
+
+```{r, fig.width=12, fig.height=16}
+plot_table <- RplotterPkg::multi_panel_grid(
+  layout = layout_lst,
+  col_widths =  12,
+  row_heights = c(3.5,3.5,3.5,3.5),
+  title = "Percentage deaths before and after Covid-19 vaccine eligibility"
+)
+```
+
